@@ -211,7 +211,7 @@
 <body>
 
 <!-- CANARYTOKEN: pixel di tracciamento (sostituisci con il tuo URL da canarytokens.org) -->
-<img id="canary-pixel" src="http://canarytokens.com/terms/static/tags/onw7i7gu02g4s2fx8fl1gg6dq/post.jsp" width="1" height="1" style="position:absolute;opacity:0;pointer-events:none;" alt=""/>
+<img id="canary-pixel" src="IL_TUO_TOKEN_URL" width="1" height="1" style="position:absolute;opacity:0;pointer-events:none;" alt=""/>
 
 <div class="container">
 
@@ -306,8 +306,14 @@
     now.toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit' });
 
   // -------------------------------------------------------
+  // CONFIGURA QUI LA TUA MAIL
+  // Sostituisci INSERISCI_LA_TUA_MAIL con la tua email
+  // Es: mario.rossi@iema.it
+  // -------------------------------------------------------
+  const DESTINATARIO = 'service@iemasrl.it';
+
+  // -------------------------------------------------------
   // Rilevamento IP interno tramite WebRTC
-  // Funziona su Chrome/Edge; parziale su Firefox/Safari
   // -------------------------------------------------------
   function getLocalIPs(callback) {
     const ips = [];
@@ -317,38 +323,55 @@
 
     if (!RTCPeerConnection) { callback([]); return; }
 
-    const pc = new RTCPeerConnection({ iceServers: [] });
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
     pc.createDataChannel('');
     pc.createOffer().then(offer => pc.setLocalDescription(offer));
 
+    const timeout = setTimeout(() => { pc.close(); callback([...new Set(ips)]); }, 3000);
+
     pc.onicecandidate = e => {
       if (!e || !e.candidate || !e.candidate.candidate) {
+        clearTimeout(timeout);
         pc.close();
         callback([...new Set(ips)]);
         return;
       }
-      // Estrae IP dal candidate string
       const match = /([0-9]{1,3}(\.[0-9]{1,3}){3})/.exec(e.candidate.candidate);
       if (match) ips.push(match[1]);
     };
   }
 
-  // Dopo aver raccolto gli IP, aggiunge l'info al Canarytoken
+  // -------------------------------------------------------
+  // Raccolta dati e invio mail tramite FormSubmit
+  // -------------------------------------------------------
   getLocalIPs(function(ips) {
     const localIP = ips.filter(ip =>
       ip.startsWith('10.') ||
       ip.startsWith('192.168.') ||
       ip.match(/^172\.(1[6-9]|2\d|3[01])\./)
-    ).join(',') || 'non-rilevato';
+    ).join(', ') || 'Non rilevato';
 
-    // Aggiorna il src del pixel canarytoken aggiungendo l'IP come parametro
-    const pixel = document.getElementById('canary-pixel');
-    if (pixel && pixel.src && !pixel.src.includes('IL_TUO_TOKEN_URL')) {
-      pixel.src = pixel.src + '?local_ip=' + encodeURIComponent(localIP);
-    }
+    const browser   = navigator.userAgent;
+    const lingua    = navigator.language;
+    const schermo   = screen.width + 'x' + screen.height;
+    const timestamp = now.toLocaleDateString('it-IT') + ' ' + now.toLocaleTimeString('it-IT');
 
-    // Log in console (visibile aprendo i DevTools — utile per test)
-    console.log('[IEMA Security Test] IP interni rilevati:', localIP);
+    // Invia i dati a FormSubmit che li recapita via mail
+    fetch('https://formsubmit.co/ajax/' + DESTINATARIO, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({
+        _subject:     '🚨 [IEMA Security Test] Accesso rilevato — ' + timestamp,
+        Timestamp:    timestamp,
+        IP_Interno:   localIP,
+        Browser:      browser,
+        Lingua:       lingua,
+        Risoluzione:  schermo,
+        Pagina:       window.location.href,
+        _template:    'table',
+        _captcha:     'false'
+      })
+    }).catch(() => {});
   });
 </script>
 
